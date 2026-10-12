@@ -1,0 +1,56 @@
+name: ICAI seat watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a test phone alert instead of checking"
+        type: boolean
+        default: false
+
+concurrency:
+  group: icai-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Send test alert
+        if: ${{ inputs.test == true }}
+        run: python icai_batch_watcher.py --test
+
+      - name: Install packages
+        if: ${{ inputs.test != true }}
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Check seats
+        if: ${{ inputs.test != true }}
+        run: |
+          rc=0
+          python icai_batch_watcher.py --once --region "Southern" --centres "CHENNAI,Chengalpattu" --course "Advanced Information Technology" || rc=1
+          exit $rc
+
+      - name: Upload debug screenshots
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: debug/
+          if-no-files-found: ignore
